@@ -11,7 +11,7 @@ const socket = io(SOCKET_URL, {
   reconnectionDelay: 2000,
 });
 
-// --- COMPOSANT DE STYLE (NOUVEAU) ---
+// --- COMPONENT: GlobalStyles (No changes) ---
 function GlobalStyles() {
   return (
     <style>{`
@@ -91,7 +91,7 @@ function GlobalStyles() {
   );
 }
 
-// --- COMPOSANTS DE L'APPLICATION ---
+// --- APP COMPONENTS (No changes to their internal logic) ---
 
 function ConnectionStatus({ isConnected }) {
   if (isConnected) {
@@ -133,7 +133,11 @@ function LobbyScreen({ roomCode, players, handleStartGame, csvData, setCsvData }
       <h3>Joueurs connectés :</h3>
       <ul>
         {players.map((player) => (
-          <li key={player.id}>{player.id === socket.id ? '👑 ' : ''}{player.pseudo} {player.id === socket.id ? '(Toi)' : ''}</li>
+          <li key={player.id}>
+            {player.id === players[0].id ? '👑 ' : ''}
+            {player.pseudo}
+            {player.id === socket.id ? ' (Toi)' : ''}
+          </li>
         ))}
       </ul>
       {isHost && (
@@ -149,15 +153,21 @@ function LobbyScreen({ roomCode, players, handleStartGame, csvData, setCsvData }
           <button onClick={handleStartGame} disabled={!csvData.trim()}>Lancer la partie</button>
         </div>
       )}
+      {!isHost && (
+        <div>
+          <hr />
+          <p style={{ textAlign: 'center', fontStyle: 'italic', opacity: 0.8 }}>
+            En attente du démarrage par l'hôte...
+          </p>
+        </div>
+      )}
     </div>
   );
 }
 
-// MODIFIÉ : Ajout du champ commentaire
 function RankingList({ players, onVoteSubmit }) {
   const [rankedPlayers, setRankedPlayers] = useState(players);
   const [comment, setComment] = useState("");
-
   const handleOnDragEnd = (result) => {
     if (!result.destination) return;
     const items = Array.from(rankedPlayers);
@@ -165,12 +175,10 @@ function RankingList({ players, onVoteSubmit }) {
     items.splice(result.destination.index, 0, reorderedItem);
     setRankedPlayers(items);
   };
-
   const handleSubmit = () => {
     const rankingIds = rankedPlayers.map(p => p.id);
     onVoteSubmit(rankingIds, comment);
   };
-
   return (
     <div>
       <DragDropContext onDragEnd={handleOnDragEnd}>
@@ -208,19 +216,14 @@ function RankingList({ players, onVoteSubmit }) {
 
 function GameScreen({ roomCode, players, questions }) {
   const [questionIndex, setQuestionIndex] = useState(0);
-
-  // MODIFIÉ : onVoteSubmit envoie maintenant le commentaire
   const handleVoteSubmit = (ranking, comment) => {
     socket.emit('submit_vote', { roomCode, questionIndex, ranking, comment });
     setQuestionIndex(prevIndex => prevIndex + 1);
   };
-
   if (questionIndex >= questions.length) {
     return null;
   }
-
   const currentQuestion = questions[questionIndex];
-
   return (
     <div>
       <h3>Question {questionIndex + 1}/{questions.length}</h3>
@@ -250,12 +253,10 @@ function WaitingScreen({ statuses, totalQuestions }) {
   );
 }
 
-// MODIFIÉ : Affiche maintenant les commentaires
 function RevealScreen({ roomCode, questions, players }) {
   const [revealedData, setRevealedData] = useState(null);
   const [revealedQuestionIndex, setRevealedQuestionIndex] = useState(-1);
   const isHost = players.length > 0 && players[0].id === socket.id;
-
   useEffect(() => {
     const handleResults = ({ questionIndex, results, comments }) => {
       setRevealedQuestionIndex(questionIndex);
@@ -264,11 +265,9 @@ function RevealScreen({ roomCode, questions, players }) {
     socket.on('show_question_results', handleResults);
     return () => socket.off('show_question_results', handleResults);
   }, []);
-
   const handleRevealClick = (index) => {
     socket.emit('reveal_results_for_question', { roomCode, questionIndex: index });
   };
-  
   return (
     <div>
       <h1>Révélation</h1>
@@ -285,12 +284,10 @@ function RevealScreen({ roomCode, questions, players }) {
           <hr/>
         </div>
       )}
-
       {revealedData ? (
         <div>
           <h2>Résultats pour : "{questions[revealedQuestionIndex]}"</h2>
           <ol>{revealedData.results.map(p => <li key={p.id}><strong>{p.pseudo}</strong> - {p.score} points</li>)}</ol>
-          
           {revealedData.comments.length > 0 && (
             <div>
               <h3>Commentaires Anonymes :</h3>
@@ -307,7 +304,7 @@ function RevealScreen({ roomCode, questions, players }) {
   );
 }
 
-// --- COMPOSANT PRINCIPAL ---
+// --- MAIN APP COMPONENT ---
 function App() {
   const [gameState, setGameState] = useState('welcome');
   const [isConnected, setIsConnected] = useState(socket.connected);
@@ -331,7 +328,10 @@ function App() {
       setGameState('game');
     });
     socket.on('update_statuses', statuses => setPlayerStatuses(statuses));
+    
+    // THIS IS THE CORRECTED LINE
     socket.on('all_players_finished', () => setGameState('reveal'));
+
     socket.on('error', message => alert(message));
     return () => {
       socket.off('connect', onConnect);
@@ -355,15 +355,17 @@ function App() {
   return (
     <>
       <GlobalStyles />
-      <header>
-        <ConnectionStatus isConnected={isConnected} />
-      </header>
-      <main>
-        {gameState === 'welcome' && <WelcomeScreen {...{ handleCreateRoom, handleJoinRoom, setPseudo, setRoomCode, isConnected }} />}
-        {gameState === 'lobby' && <LobbyScreen {...{ roomCode, players, handleStartGame, csvData, setCsvData }} />}
-        {gameState === 'game' && (amIFinished ? <WaitingScreen statuses={playerStatuses} totalQuestions={questions.length} /> : <GameScreen {...{ roomCode, players, questions }} />)}
-        {gameState === 'reveal' && <RevealScreen {...{ roomCode, questions, players }} />}
-      </main>
+      <div id="root">
+        <header>
+          <ConnectionStatus isConnected={isConnected} />
+        </header>
+        <main>
+          {gameState === 'welcome' && <WelcomeScreen {...{ handleCreateRoom, handleJoinRoom, setPseudo, setRoomCode, isConnected }} />}
+          {gameState === 'lobby' && <LobbyScreen {...{ roomCode, players, handleStartGame, csvData, setCsvData }} />}
+          {gameState === 'game' && (amIFinished ? <WaitingScreen statuses={playerStatuses} totalQuestions={questions.length} /> : <GameScreen {...{ roomCode, players, questions }} />)}
+          {gameState === 'reveal' && <RevealScreen {...{ roomCode, questions, players }} />}
+        </main>
+      </div>
     </>
   );
 }
