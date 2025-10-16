@@ -4,11 +4,10 @@ import { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
-const SOCKET_URL = "https://chibouk-repond-server.onrender.com";
+const SOCKET_URL = "https://chibouk-repond-server.onrender.com/"; // Make sure this is your Render server URL
 const socket = io(SOCKET_URL);
 
-// --- COMPOSANTS SÉPARÉS ---
-
+// --- COMPONENT: WelcomeScreen (No changes) ---
 function WelcomeScreen({ handleCreateRoom, handleJoinRoom, setPseudo, setRoomCode }) {
   return (
     <div>
@@ -33,9 +32,9 @@ function WelcomeScreen({ handleCreateRoom, handleJoinRoom, setPseudo, setRoomCod
   );
 }
 
+// --- COMPONENT: LobbyScreen (No changes) ---
 function LobbyScreen({ roomCode, players, handleStartGame, csvData, setCsvData }) {
   const isHost = players.length > 0 && players[0].id === socket.id;
-
   return (
     <div>
       <h1>Lobby de la room : <strong>{roomCode}</strong></h1>
@@ -45,7 +44,6 @@ function LobbyScreen({ roomCode, players, handleStartGame, csvData, setCsvData }
           <li key={player.id}>{player.pseudo} {player.id === socket.id ? '👑 (Hôte, Toi)' : ''}</li>
         ))}
       </ul>
-
       {isHost && (
         <div>
           <hr/>
@@ -66,10 +64,10 @@ function LobbyScreen({ roomCode, players, handleStartGame, csvData, setCsvData }
   );
 }
 
+// --- COMPONENT: RankingList (MODIFIED) ---
 function RankingList({ players, onVoteSubmit }) {
-  const otherPlayers = players.filter(p => p.id !== socket.id);
-  const [rankedPlayers, setRankedPlayers] = useState(otherPlayers);
-  const [hasVoted, setHasVoted] = useState(false);
+  // MODIFICATION: We now include all players in the list, including the current user.
+  const [rankedPlayers, setRankedPlayers] = useState(players);
 
   const handleOnDragEnd = (result) => {
     if (!result.destination) return;
@@ -82,12 +80,7 @@ function RankingList({ players, onVoteSubmit }) {
   const handleSubmit = () => {
     const rankingIds = rankedPlayers.map(p => p.id);
     onVoteSubmit(rankingIds);
-    setHasVoted(true);
   };
-
-  if (hasVoted) {
-    return <h3>Merci pour ton vote ! En attente des autres joueurs...</h3>;
-  }
 
   return (
     <div>
@@ -102,7 +95,7 @@ function RankingList({ players, onVoteSubmit }) {
                       ref={provided.innerRef}
                       {...provided.draggableProps}
                       {...provided.dragHandleProps}
-                      style={{ padding: '10px', margin: '0 0 8px 0', backgroundColor: '#f0f0f0', ...provided.draggableProps.style }}
+                      style={{ padding: '10px', margin: '0 0 8px 0', backgroundColor: '#f0f0f0', color: 'black', ...provided.draggableProps.style }}
                     >
                       {player.pseudo}
                     </li>
@@ -119,54 +112,97 @@ function RankingList({ players, onVoteSubmit }) {
   );
 }
 
+// --- COMPONENT: GameScreen (No changes) ---
 function GameScreen({ roomCode, players, questions }) {
-  const currentQuestion = questions[0];
+  const [questionIndex, setQuestionIndex] = useState(0);
 
   const handleVoteSubmit = (ranking) => {
-    socket.emit('submit_vote', { roomCode, ranking });
+    socket.emit('submit_vote', { roomCode, questionIndex, ranking });
+    setQuestionIndex(prevIndex => prevIndex + 1);
   };
+
+  if (questionIndex >= questions.length) {
+    return null;
+  }
+
+  const currentQuestion = questions[questionIndex];
 
   return (
     <div>
-      <h1>Partie en cours !</h1>
-      <h2>Question : {currentQuestion}</h2>
-      <p>Classe les joueurs du plus... au moins... :</p>
-      <RankingList players={players} onVoteSubmit={handleVoteSubmit} />
+      <h1>Question {questionIndex + 1}/{questions.length}</h1>
+      <h2>{currentQuestion}</h2>
+      <RankingList key={questionIndex} players={players} onVoteSubmit={handleVoteSubmit} />
     </div>
   );
 }
 
-// NOUVEAU COMPOSANT
-function ResultsScreen({ results, questions, roomCode }) {
-  const isHost = results.length > 0 && results[0].id === socket.id;
-  const currentQuestion = questions[0];
-
-  const handleNextQuestion = () => {
-    // Cette logique sera implémentée dans la prochaine étape
-    console.log("Demande pour passer à la question suivante");
-    // socket.emit('next_question', { roomCode });
-  };
-
+// --- COMPONENT: WaitingScreen (No changes) ---
+function WaitingScreen({ statuses, totalQuestions }) {
   return (
     <div>
-      <h1>Résultats pour : "{currentQuestion}"</h1>
-      <ol style={{ paddingLeft: '20px' }}>
-        {results.map((player) => (
-          <li key={player.id} style={{ fontSize: '1.2em', margin: '10px 0' }}>
-            <strong>{player.pseudo}</strong> - {player.score} points
+      <h1>En attente des autres joueurs...</h1>
+      <ul style={{ listStyle: 'none', padding: 0 }}>
+        {statuses.map(player => (
+          <li key={player.id} style={{ margin: '10px 0', padding: '10px', backgroundColor: '#333' }}>
+            <strong>{player.pseudo}</strong> - 
+            {player.isFinished
+              ? " ✅ A terminé !"
+              : ` Question ${player.progress + 1}/${totalQuestions}`
+            }
           </li>
         ))}
-      </ol>
+      </ul>
+    </div>
+  );
+}
 
+// --- COMPONENT: RevealScreen (No changes) ---
+function RevealScreen({ roomCode, questions, players }) {
+  const [revealedResults, setRevealedResults] = useState(null);
+  const [revealedQuestionIndex, setRevealedQuestionIndex] = useState(-1);
+  const isHost = players.length > 0 && players[0].id === socket.id;
+
+  useEffect(() => {
+    const handleResults = ({ questionIndex, results }) => {
+      setRevealedQuestionIndex(questionIndex);
+      setRevealedResults(results);
+    };
+    socket.on('show_question_results', handleResults);
+    return () => socket.off('show_question_results', handleResults);
+  }, []);
+
+  const handleRevealClick = (index) => {
+    socket.emit('reveal_results_for_question', { roomCode, questionIndex: index });
+  };
+  
+  return (
+    <div>
+      <h1>Révélation des Résultats</h1>
       {isHost && (
-        <button onClick={handleNextQuestion}>Question Suivante</button>
+        <div style={{ marginBottom: '20px' }}>
+          <p>Clique sur une question pour révéler les résultats à tout le monde :</p>
+          {questions.map((q, i) => (
+            <button key={i} onClick={() => handleRevealClick(i)} disabled={revealedQuestionIndex === i} style={{ margin: '5px' }}>
+              Question {i + 1}: {q}
+            </button>
+          ))}
+          <hr/>
+        </div>
+      )}
+
+      {revealedResults ? (
+        <div>
+          <h2>Résultats pour : "{questions[revealedQuestionIndex]}"</h2>
+          <ol>{revealedResults.map(p => <li key={p.id} style={{ fontSize: '1.2em' }}>{p.pseudo} - {p.score} points</li>)}</ol>
+        </div>
+      ) : (
+        <h2>{isHost ? "À vous de jouer, choisissez une question." : "En attente que l'hôte révèle les résultats."}</h2>
       )}
     </div>
   );
 }
 
-// --- COMPOSANT PRINCIPAL ---
-
+// --- COMPONENT: App (No changes) ---
 function App() {
   const [gameState, setGameState] = useState('welcome');
   const [roomCode, setRoomCode] = useState('');
@@ -174,43 +210,26 @@ function App() {
   const [players, setPlayers] = useState([]);
   const [questions, setQuestions] = useState([]);
   const [csvData, setCsvData] = useState('');
-  const [results, setResults] = useState([]); // Nouvel état pour les résultats
+  const [playerStatuses, setPlayerStatuses] = useState([]);
 
   useEffect(() => {
-    socket.on('room_created', (code) => {
-      setRoomCode(code);
-      setGameState('lobby');
-    });
-
-    socket.on('update_players', (playerList) => {
-      setPlayers(playerList);
-      setGameState('lobby'); 
-    });
-    
+    socket.on('room_created', code => { setRoomCode(code); setGameState('lobby'); });
+    socket.on('update_players', playerList => { setPlayers(playerList); setGameState('lobby'); });
     socket.on('game_started', ({ players, questions }) => {
       setPlayers(players);
       setQuestions(questions);
       setGameState('game');
     });
-
-    socket.on('vote_received', () => {
-      console.log("Le serveur a bien reçu notre vote.");
-    });
-    
-    // NOUVEL ÉVÉNEMENT
-    socket.on('show_results', (calculatedResults) => {
-      setResults(calculatedResults);
-      setGameState('results');
-    });
-
-    socket.on('error', (message) => alert(message));
+    socket.on('update_statuses', statuses => setPlayerStatuses(statuses));
+    socket.on('all_players_finished', () => setGameState('reveal'));
+    socket.on('error', message => alert(message));
 
     return () => {
       socket.off('room_created');
       socket.off('update_players');
       socket.off('game_started');
-      socket.off('vote_received');
-      socket.off('show_results');
+      socket.off('update_statuses');
+      socket.off('all_players_finished');
       socket.off('error');
     };
   }, []);
@@ -218,6 +237,9 @@ function App() {
   const handleCreateRoom = (e) => { e.preventDefault(); if (pseudo) socket.emit('create_room', { pseudo }); };
   const handleJoinRoom = (e) => { e.preventDefault(); if (pseudo && roomCode) socket.emit('join_room', { roomCode, pseudo }); };
   const handleStartGame = () => { if (csvData) socket.emit('start_game', { roomCode, csvData }); };
+
+  const myStatus = playerStatuses.find(p => p.id === socket.id);
+  const amIFinished = myStatus && myStatus.isFinished;
 
   if (gameState === 'welcome') {
     return <WelcomeScreen {...{ handleCreateRoom, handleJoinRoom, setPseudo, setRoomCode }} />;
@@ -228,12 +250,14 @@ function App() {
   }
 
   if (gameState === 'game') {
+    if (amIFinished) {
+      return <WaitingScreen statuses={playerStatuses} totalQuestions={questions.length} />;
+    }
     return <GameScreen {...{ roomCode, players, questions }} />;
   }
-  
-  // NOUVEL AFFICHAGE
-  if (gameState === 'results') {
-    return <ResultsScreen {...{ results, questions, roomCode }} />;
+
+  if (gameState === 'reveal') {
+    return <RevealScreen {...{ roomCode, questions, players }} />;
   }
 }
 
