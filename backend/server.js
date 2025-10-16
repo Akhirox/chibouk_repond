@@ -7,10 +7,17 @@ const { Server } = require("socket.io");
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
+  // --- MODIFICATION ICI ---
   cors: {
-    origin: "https://akhirox.github.io", // Be specific!
+    // On autorise maintenant une liste de domaines
+    origin: [
+      "https://chbk.fun", 
+      "https://www.chbk.fun", 
+      "https://akhirox.github.io"
+    ],
     methods: ["GET", "POST"]
   }
+  // --- FIN DE LA MODIFICATION ---
 });
 
 const PORT = 3001;
@@ -76,7 +83,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // --- MODIFICATION 1 : Accepter le commentaire ---
   // Le joueur soumet son vote ET son commentaire
   socket.on('submit_vote', ({ roomCode, questionIndex, ranking, comment }) => {
     const room = rooms[roomCode];
@@ -95,7 +101,6 @@ io.on('connection', (socket) => {
     updateAndEmitStatuses(roomCode);
   });
   
-  // --- MODIFICATION 2 : Envoyer les commentaires avec les résultats ---
   // L'hôte demande les résultats pour une question
   socket.on('reveal_results_for_question', ({ roomCode, questionIndex }) => {
     const room = rooms[roomCode];
