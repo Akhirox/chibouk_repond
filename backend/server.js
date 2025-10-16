@@ -16,7 +16,7 @@ const rooms = {};
 // --- FONCTION UTILITAIRE POUR ENVOYER LES STATUTS ---
 const updateAndEmitStatuses = (roomCode) => {
   const room = rooms[roomCode];
-  if (!room) return;
+  if (!room || !room.questions) return;
 
   const playerStatuses = room.players.map(p => ({
     id: p.id,
@@ -73,10 +73,10 @@ io.on('connection', (socket) => {
     }
   });
 
-  // MODIFIÉ : Le joueur soumet son vote pour une question spécifique
+  // Le joueur soumet son vote pour une question spécifique
   socket.on('submit_vote', ({ roomCode, questionIndex, ranking }) => {
     const room = rooms[roomCode];
-    if (!room || !room.answers[questionIndex]) return;
+    if (!room || !room.answers || !room.answers[questionIndex]) return;
 
     room.answers[questionIndex][socket.id] = ranking;
 
@@ -90,7 +90,7 @@ io.on('connection', (socket) => {
     updateAndEmitStatuses(roomCode);
   });
   
-  // NOUVEAU : L'hôte demande les résultats pour une question
+  // L'hôte demande les résultats pour une question
   socket.on('reveal_results_for_question', ({ roomCode, questionIndex }) => {
     const room = rooms[roomCode];
     if (!room || room.players[0].id !== socket.id || !room.answers[questionIndex]) return;
@@ -105,7 +105,10 @@ io.on('connection', (socket) => {
       const currentRanking = votesForThisQuestion[voterId];
       const maxPoints = currentRanking.length;
       currentRanking.forEach((rankedPlayerId, index) => {
-        scores[rankedPlayerId] += maxPoints - index;
+        // On vérifie que le joueur classé existe bien dans les scores avant d'ajouter des points
+        if (scores.hasOwnProperty(rankedPlayerId)) {
+          scores[rankedPlayerId] += maxPoints - index;
+        }
       });
     }
 
