@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
-const SOCKET_URL = "https://potential-goldfish-qjrxgxp9prpc94qx-3001.app.github.dev/"; 
+const SOCKET_URL = "https://chibouk-repond-server.onrender.com";
 const socket = io(SOCKET_URL);
 
 // --- COMPOSANTS SÉPARÉS ---
