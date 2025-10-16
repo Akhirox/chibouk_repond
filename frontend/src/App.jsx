@@ -4,17 +4,95 @@ import { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
-// CONFIGURATION DU SOCKET AVEC RECONNEXION AUTOMATIQUE
-const SOCKET_URL = "https://chibouk-repond-server.onrender.com/"; 
+const SOCKET_URL = "https://chibouk-repond-server.onrender.com/";
 const socket = io(SOCKET_URL, {
-  reconnection: true,         // Active la reconnexion
-  reconnectionAttempts: 15,   // Essaie de se reconnecter 15 fois (pendant 30s)
-  reconnectionDelay: 2000,    // Attend 2 secondes entre chaque tentative
+  reconnection: true,
+  reconnectionAttempts: 15,
+  reconnectionDelay: 2000,
 });
 
-// --- COMPOSANTS ---
+// --- COMPOSANT DE STYLE (NOUVEAU) ---
+function GlobalStyles() {
+  return (
+    <style>{`
+      @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
+      
+      :root {
+        --background: #121212;
+        --surface: #1E1E1E;
+        --primary: #BB86FC;
+        --primary-variant: #3700B3;
+        --secondary: #03DAC6;
+        --on-background: #FFFFFF;
+        --on-surface: #E0E0E0;
+        --border-radius: 8px;
+        --error: #CF6679;
+      }
 
-// NOUVEAU COMPOSANT POUR LE STATUT DE CONNEXION
+      body {
+        margin: 0;
+        font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
+        background-color: var(--background);
+        color: var(--on-background);
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        min-height: 100vh;
+        padding: 20px;
+        box-sizing: border-box;
+      }
+
+      #root {
+        width: 100%;
+        max-width: 500px;
+        background: var(--surface);
+        padding: 2rem;
+        border-radius: var(--border-radius);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+      }
+
+      h1, h2, h3 { color: var(--on-background); font-weight: 600; }
+      h1 { text-align: center; color: var(--primary); font-size: 2.5rem; margin-top: 0; }
+      h2 { border-bottom: 2px solid var(--primary); padding-bottom: 8px; }
+
+      input, textarea, button {
+        font-family: 'Poppins', sans-serif;
+        width: 100%;
+        padding: 12px;
+        margin: 8px 0;
+        border-radius: var(--border-radius);
+        border: 1px solid #333;
+        background: #2C2C2C;
+        color: var(--on-surface);
+        box-sizing: border-box;
+        font-size: 1rem;
+      }
+      
+      textarea { resize: vertical; min-height: 80px; }
+
+      button {
+        background-color: var(--primary);
+        color: #000;
+        font-weight: 700;
+        border: none;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        text-transform: uppercase;
+      }
+      button:hover { background-color: var(--secondary); }
+      button:disabled { background-color: #333; cursor: not-allowed; color: #666; }
+
+      ul { list-style: none; padding: 0; }
+      li { background: #2C2C2C; padding: 1rem; margin-bottom: 8px; border-radius: var(--border-radius); }
+
+      hr { border-color: #333; }
+      p { color: var(--on-surface); }
+    `}</style>
+  );
+}
+
+// --- COMPOSANTS DE L'APPLICATION ---
+
 function ConnectionStatus({ isConnected }) {
   if (isConnected) {
     return <p style={{ color: 'lightgreen', textAlign: 'center' }}>✅ Connecté</p>;
@@ -30,7 +108,6 @@ function WelcomeScreen({ handleCreateRoom, handleJoinRoom, setPseudo, setRoomCod
         <h2>Créer une Room</h2>
         <form onSubmit={handleCreateRoom}>
           <input type="text" placeholder="Ton pseudo" onChange={(e) => setPseudo(e.target.value)} required />
-          {/* Le bouton est désactivé tant que la connexion n'est pas établie */}
           <button type="submit" disabled={!isConnected}>Créer</button>
         </form>
       </div>
@@ -40,7 +117,6 @@ function WelcomeScreen({ handleCreateRoom, handleJoinRoom, setPseudo, setRoomCod
         <form onSubmit={handleJoinRoom}>
           <input type="text" placeholder="Ton pseudo" onChange={(e) => setPseudo(e.target.value)} required />
           <input type="text" placeholder="Code de la room" onChange={(e) => setRoomCode(e.target.value.toUpperCase())} required />
-          {/* Le bouton est désactivé tant que la connexion n'est pas établie */}
           <button type="submit" disabled={!isConnected}>Rejoindre</button>
         </form>
       </div>
@@ -52,11 +128,12 @@ function LobbyScreen({ roomCode, players, handleStartGame, csvData, setCsvData }
   const isHost = players.length > 0 && players[0].id === socket.id;
   return (
     <div>
-      <h1>Lobby de la room : <strong>{roomCode}</strong></h1>
-      <h2>Joueurs connectés :</h2>
+      <h1>Lobby</h1>
+      <h2>Room : <strong style={{ color: 'var(--secondary)' }}>{roomCode}</strong></h2>
+      <h3>Joueurs connectés :</h3>
       <ul>
         {players.map((player) => (
-          <li key={player.id}>{player.pseudo} {player.id === socket.id ? '👑 (Hôte, Toi)' : ''}</li>
+          <li key={player.id}>{player.id === socket.id ? '👑 ' : ''}{player.pseudo} {player.id === socket.id ? '(Toi)' : ''}</li>
         ))}
       </ul>
       {isHost && (
@@ -65,9 +142,6 @@ function LobbyScreen({ roomCode, players, handleStartGame, csvData, setCsvData }
           <h3>Prêt à commencer ?</h3>
           <p>Colle tes questions ici (une par ligne) :</p>
           <textarea
-            rows="10"
-            cols="50"
-            placeholder="Qui est le plus drôle ?&#10;Qui est le plus susceptible de se perdre en ville ?&#10;..."
             value={csvData}
             onChange={(e) => setCsvData(e.target.value)}
           ></textarea>
@@ -79,8 +153,10 @@ function LobbyScreen({ roomCode, players, handleStartGame, csvData, setCsvData }
   );
 }
 
+// MODIFIÉ : Ajout du champ commentaire
 function RankingList({ players, onVoteSubmit }) {
   const [rankedPlayers, setRankedPlayers] = useState(players);
+  const [comment, setComment] = useState("");
 
   const handleOnDragEnd = (result) => {
     if (!result.destination) return;
@@ -92,7 +168,7 @@ function RankingList({ players, onVoteSubmit }) {
 
   const handleSubmit = () => {
     const rankingIds = rankedPlayers.map(p => p.id);
-    onVoteSubmit(rankingIds);
+    onVoteSubmit(rankingIds, comment);
   };
 
   return (
@@ -100,7 +176,7 @@ function RankingList({ players, onVoteSubmit }) {
       <DragDropContext onDragEnd={handleOnDragEnd}>
         <Droppable droppableId="players">
           {(provided) => (
-            <ul {...provided.droppableProps} ref={provided.innerRef} style={{ listStyle: 'none', padding: 0 }}>
+            <ul {...provided.droppableProps} ref={provided.innerRef}>
               {rankedPlayers.map((player, index) => (
                 <Draggable key={player.id} draggableId={player.id} index={index}>
                   {(provided) => (
@@ -108,7 +184,7 @@ function RankingList({ players, onVoteSubmit }) {
                       ref={provided.innerRef}
                       {...provided.draggableProps}
                       {...provided.dragHandleProps}
-                      style={{ padding: '10px', margin: '0 0 8px 0', backgroundColor: '#f0f0f0', color: 'black', ...provided.draggableProps.style }}
+                      style={{ ...provided.draggableProps.style }}
                     >
                       {player.pseudo}
                     </li>
@@ -120,6 +196,11 @@ function RankingList({ players, onVoteSubmit }) {
           )}
         </Droppable>
       </DragDropContext>
+      <textarea
+        placeholder="Ajouter un commentaire (optionnel)..."
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+      />
       <button onClick={handleSubmit}>Valider mon vote</button>
     </div>
   );
@@ -128,8 +209,9 @@ function RankingList({ players, onVoteSubmit }) {
 function GameScreen({ roomCode, players, questions }) {
   const [questionIndex, setQuestionIndex] = useState(0);
 
-  const handleVoteSubmit = (ranking) => {
-    socket.emit('submit_vote', { roomCode, questionIndex, ranking });
+  // MODIFIÉ : onVoteSubmit envoie maintenant le commentaire
+  const handleVoteSubmit = (ranking, comment) => {
+    socket.emit('submit_vote', { roomCode, questionIndex, ranking, comment });
     setQuestionIndex(prevIndex => prevIndex + 1);
   };
 
@@ -141,7 +223,7 @@ function GameScreen({ roomCode, players, questions }) {
 
   return (
     <div>
-      <h1>Question {questionIndex + 1}/{questions.length}</h1>
+      <h3>Question {questionIndex + 1}/{questions.length}</h3>
       <h2>{currentQuestion}</h2>
       <RankingList key={questionIndex} players={players} onVoteSubmit={handleVoteSubmit} />
     </div>
@@ -151,10 +233,11 @@ function GameScreen({ roomCode, players, questions }) {
 function WaitingScreen({ statuses, totalQuestions }) {
   return (
     <div>
-      <h1>En attente des autres joueurs...</h1>
-      <ul style={{ listStyle: 'none', padding: 0 }}>
+      <h1>En attente...</h1>
+      <p>Les autres joueurs sont en train de terminer leurs réponses.</p>
+      <ul>
         {statuses.map(player => (
-          <li key={player.id} style={{ margin: '10px 0', padding: '10px', backgroundColor: '#333' }}>
+          <li key={player.id}>
             <strong>{player.pseudo}</strong> - 
             {player.isFinished
               ? " ✅ A terminé !"
@@ -167,15 +250,16 @@ function WaitingScreen({ statuses, totalQuestions }) {
   );
 }
 
+// MODIFIÉ : Affiche maintenant les commentaires
 function RevealScreen({ roomCode, questions, players }) {
-  const [revealedResults, setRevealedResults] = useState(null);
+  const [revealedData, setRevealedData] = useState(null);
   const [revealedQuestionIndex, setRevealedQuestionIndex] = useState(-1);
   const isHost = players.length > 0 && players[0].id === socket.id;
 
   useEffect(() => {
-    const handleResults = ({ questionIndex, results }) => {
+    const handleResults = ({ questionIndex, results, comments }) => {
       setRevealedQuestionIndex(questionIndex);
-      setRevealedResults(results);
+      setRevealedData({ results, comments });
     };
     socket.on('show_question_results', handleResults);
     return () => socket.off('show_question_results', handleResults);
@@ -187,26 +271,37 @@ function RevealScreen({ roomCode, questions, players }) {
   
   return (
     <div>
-      <h1>Révélation des Résultats</h1>
+      <h1>Révélation</h1>
       {isHost && (
         <div style={{ marginBottom: '20px' }}>
-          <p>Clique sur une question pour révéler les résultats à tout le monde :</p>
-          {questions.map((q, i) => (
-            <button key={i} onClick={() => handleRevealClick(i)} disabled={revealedQuestionIndex === i} style={{ margin: '5px' }}>
-              Question {i + 1}: {q}
-            </button>
-          ))}
+          <p>Cliquez sur une question pour révéler les résultats :</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+            {questions.map((q, i) => (
+              <button key={i} onClick={() => handleRevealClick(i)} disabled={revealedQuestionIndex === i} style={{ flexGrow: 1 }}>
+                {i + 1}
+              </button>
+            ))}
+          </div>
           <hr/>
         </div>
       )}
 
-      {revealedResults ? (
+      {revealedData ? (
         <div>
           <h2>Résultats pour : "{questions[revealedQuestionIndex]}"</h2>
-          <ol>{revealedResults.map(p => <li key={p.id} style={{ fontSize: '1.2em' }}>{p.pseudo} - {p.score} points</li>)}</ol>
+          <ol>{revealedData.results.map(p => <li key={p.id}><strong>{p.pseudo}</strong> - {p.score} points</li>)}</ol>
+          
+          {revealedData.comments.length > 0 && (
+            <div>
+              <h3>Commentaires Anonymes :</h3>
+              <ul>
+                {revealedData.comments.map((c, i) => <li key={i}>"{c}"</li>)}
+              </ul>
+            </div>
+          )}
         </div>
       ) : (
-        <h2>{isHost ? "À vous de jouer, choisissez une question." : "En attente que l'hôte révèle les résultats."}</h2>
+        <h2>{isHost ? "À vous de jouer." : "En attente que l'hôte révèle les résultats."}</h2>
       )}
     </div>
   );
@@ -224,14 +319,10 @@ function App() {
   const [playerStatuses, setPlayerStatuses] = useState([]);
 
   useEffect(() => {
-    // Événements pour suivre la connexion
     const onConnect = () => setIsConnected(true);
     const onDisconnect = () => setIsConnected(false);
-
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
-
-    // Événements du jeu
     socket.on('room_created', code => { setRoomCode(code); setGameState('lobby'); });
     socket.on('update_players', playerList => { setPlayers(playerList); setGameState('lobby'); });
     socket.on('game_started', ({ players, questions }) => {
@@ -242,7 +333,6 @@ function App() {
     socket.on('update_statuses', statuses => setPlayerStatuses(statuses));
     socket.on('all_players_finished', () => setGameState('reveal'));
     socket.on('error', message => alert(message));
-
     return () => {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
@@ -263,7 +353,8 @@ function App() {
   const amIFinished = myStatus && myStatus.isFinished;
 
   return (
-    <div>
+    <>
+      <GlobalStyles />
       <header>
         <ConnectionStatus isConnected={isConnected} />
       </header>
@@ -273,7 +364,7 @@ function App() {
         {gameState === 'game' && (amIFinished ? <WaitingScreen statuses={playerStatuses} totalQuestions={questions.length} /> : <GameScreen {...{ roomCode, players, questions }} />)}
         {gameState === 'reveal' && <RevealScreen {...{ roomCode, questions, players }} />}
       </main>
-    </div>
+    </>
   );
 }
 

@@ -76,23 +76,26 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Le joueur soumet son vote pour une question spécifique
-  socket.on('submit_vote', ({ roomCode, questionIndex, ranking }) => {
+  // --- MODIFICATION 1 : Accepter le commentaire ---
+  // Le joueur soumet son vote ET son commentaire
+  socket.on('submit_vote', ({ roomCode, questionIndex, ranking, comment }) => {
     const room = rooms[roomCode];
     if (!room || !room.answers || !room.answers[questionIndex]) return;
 
-    room.answers[questionIndex][socket.id] = ranking;
+    // On stocke le classement ET le commentaire dans un objet
+    room.answers[questionIndex][socket.id] = { ranking, comment };
 
-    // Mettre à jour la progression du joueur
+    // Mettre à jour la progression du joueur (inchangé)
     const player = room.players.find(p => p.id === socket.id);
     if (player) {
       player.progress = questionIndex + 1;
     }
     
-    // Envoyer le nouveau statut de tout le monde à tout le monde
+    // Envoyer le nouveau statut (inchangé)
     updateAndEmitStatuses(roomCode);
   });
   
+  // --- MODIFICATION 2 : Envoyer les commentaires avec les résultats ---
   // L'hôte demande les résultats pour une question
   socket.on('reveal_results_for_question', ({ roomCode, questionIndex }) => {
     const room = rooms[roomCode];
@@ -103,12 +106,20 @@ io.on('connection', (socket) => {
 
     const scores = {};
     playersInRoom.forEach(p => scores[p.id] = 0);
+    const comments = []; // On prépare un tableau pour collecter les commentaires
 
     for (const voterId in votesForThisQuestion) {
-      const currentRanking = votesForThisQuestion[voterId];
-      const maxPoints = currentRanking.length;
-      currentRanking.forEach((rankedPlayerId, index) => {
-        // On vérifie que le joueur classé existe bien dans les scores avant d'ajouter des points
+      // On déstructure l'objet pour récupérer le ranking et le commentaire
+      const { ranking, comment } = votesForThisQuestion[voterId];
+      
+      // Si un commentaire existe et n'est pas vide, on l'ajoute à la liste
+      if (comment && comment.trim() !== '') {
+        comments.push(comment);
+      }
+      
+      // La logique de calcul des scores reste la même, mais utilise "ranking"
+      const maxPoints = ranking.length;
+      ranking.forEach((rankedPlayerId, index) => {
         if (scores.hasOwnProperty(rankedPlayerId)) {
           scores[rankedPlayerId] += maxPoints - index;
         }
@@ -119,7 +130,8 @@ io.on('connection', (socket) => {
       .map(p => ({ id: p.id, pseudo: p.pseudo, score: scores[p.id] || 0 }))
       .sort((a, b) => b.score - a.score);
     
-    io.to(roomCode).emit('show_question_results', { questionIndex, results });
+    // On envoie les résultats ET la liste des commentaires anonymes
+    io.to(roomCode).emit('show_question_results', { questionIndex, results, comments });
   });
 
   socket.on('disconnect', () => {
