@@ -4,11 +4,25 @@ import { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 
-const SOCKET_URL = "https://chibouk-repond-server.onrender.com/"; // Make sure this is your Render server URL
-const socket = io(SOCKET_URL);
+// CONFIGURATION DU SOCKET AVEC RECONNEXION AUTOMATIQUE
+const SOCKET_URL = "https://chibouk-repond-server.onrender.com/"; 
+const socket = io(SOCKET_URL, {
+  reconnection: true,         // Active la reconnexion
+  reconnectionAttempts: 15,   // Essaie de se reconnecter 15 fois (pendant 30s)
+  reconnectionDelay: 2000,    // Attend 2 secondes entre chaque tentative
+});
 
-// --- COMPONENT: WelcomeScreen (No changes) ---
-function WelcomeScreen({ handleCreateRoom, handleJoinRoom, setPseudo, setRoomCode }) {
+// --- COMPOSANTS ---
+
+// NOUVEAU COMPOSANT POUR LE STATUT DE CONNEXION
+function ConnectionStatus({ isConnected }) {
+  if (isConnected) {
+    return <p style={{ color: 'lightgreen', textAlign: 'center' }}>✅ Connecté</p>;
+  }
+  return <p style={{ color: 'orange', textAlign: 'center' }}>⏳ Réveil du serveur en cours, veuillez patienter...</p>;
+}
+
+function WelcomeScreen({ handleCreateRoom, handleJoinRoom, setPseudo, setRoomCode, isConnected }) {
   return (
     <div>
       <h1>Chibouk Répond</h1>
@@ -16,7 +30,8 @@ function WelcomeScreen({ handleCreateRoom, handleJoinRoom, setPseudo, setRoomCod
         <h2>Créer une Room</h2>
         <form onSubmit={handleCreateRoom}>
           <input type="text" placeholder="Ton pseudo" onChange={(e) => setPseudo(e.target.value)} required />
-          <button type="submit">Créer</button>
+          {/* Le bouton est désactivé tant que la connexion n'est pas établie */}
+          <button type="submit" disabled={!isConnected}>Créer</button>
         </form>
       </div>
       <hr />
@@ -25,14 +40,14 @@ function WelcomeScreen({ handleCreateRoom, handleJoinRoom, setPseudo, setRoomCod
         <form onSubmit={handleJoinRoom}>
           <input type="text" placeholder="Ton pseudo" onChange={(e) => setPseudo(e.target.value)} required />
           <input type="text" placeholder="Code de la room" onChange={(e) => setRoomCode(e.target.value.toUpperCase())} required />
-          <button type="submit">Rejoindre</button>
+          {/* Le bouton est désactivé tant que la connexion n'est pas établie */}
+          <button type="submit" disabled={!isConnected}>Rejoindre</button>
         </form>
       </div>
     </div>
   );
 }
 
-// --- COMPONENT: LobbyScreen (No changes) ---
 function LobbyScreen({ roomCode, players, handleStartGame, csvData, setCsvData }) {
   const isHost = players.length > 0 && players[0].id === socket.id;
   return (
@@ -64,9 +79,7 @@ function LobbyScreen({ roomCode, players, handleStartGame, csvData, setCsvData }
   );
 }
 
-// --- COMPONENT: RankingList (MODIFIED) ---
 function RankingList({ players, onVoteSubmit }) {
-  // MODIFICATION: We now include all players in the list, including the current user.
   const [rankedPlayers, setRankedPlayers] = useState(players);
 
   const handleOnDragEnd = (result) => {
@@ -112,7 +125,6 @@ function RankingList({ players, onVoteSubmit }) {
   );
 }
 
-// --- COMPONENT: GameScreen (No changes) ---
 function GameScreen({ roomCode, players, questions }) {
   const [questionIndex, setQuestionIndex] = useState(0);
 
@@ -136,7 +148,6 @@ function GameScreen({ roomCode, players, questions }) {
   );
 }
 
-// --- COMPONENT: WaitingScreen (No changes) ---
 function WaitingScreen({ statuses, totalQuestions }) {
   return (
     <div>
@@ -156,7 +167,6 @@ function WaitingScreen({ statuses, totalQuestions }) {
   );
 }
 
-// --- COMPONENT: RevealScreen (No changes) ---
 function RevealScreen({ roomCode, questions, players }) {
   const [revealedResults, setRevealedResults] = useState(null);
   const [revealedQuestionIndex, setRevealedQuestionIndex] = useState(-1);
@@ -202,9 +212,10 @@ function RevealScreen({ roomCode, questions, players }) {
   );
 }
 
-// --- COMPONENT: App (No changes) ---
+// --- COMPOSANT PRINCIPAL ---
 function App() {
   const [gameState, setGameState] = useState('welcome');
+  const [isConnected, setIsConnected] = useState(socket.connected);
   const [roomCode, setRoomCode] = useState('');
   const [pseudo, setPseudo] = useState('');
   const [players, setPlayers] = useState([]);
@@ -213,6 +224,14 @@ function App() {
   const [playerStatuses, setPlayerStatuses] = useState([]);
 
   useEffect(() => {
+    // Événements pour suivre la connexion
+    const onConnect = () => setIsConnected(true);
+    const onDisconnect = () => setIsConnected(false);
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+
+    // Événements du jeu
     socket.on('room_created', code => { setRoomCode(code); setGameState('lobby'); });
     socket.on('update_players', playerList => { setPlayers(playerList); setGameState('lobby'); });
     socket.on('game_started', ({ players, questions }) => {
@@ -225,6 +244,8 @@ function App() {
     socket.on('error', message => alert(message));
 
     return () => {
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
       socket.off('room_created');
       socket.off('update_players');
       socket.off('game_started');
@@ -241,24 +262,19 @@ function App() {
   const myStatus = playerStatuses.find(p => p.id === socket.id);
   const amIFinished = myStatus && myStatus.isFinished;
 
-  if (gameState === 'welcome') {
-    return <WelcomeScreen {...{ handleCreateRoom, handleJoinRoom, setPseudo, setRoomCode }} />;
-  }
-  
-  if (gameState === 'lobby') {
-    return <LobbyScreen {...{ roomCode, players, handleStartGame, csvData, setCsvData }} />;
-  }
-
-  if (gameState === 'game') {
-    if (amIFinished) {
-      return <WaitingScreen statuses={playerStatuses} totalQuestions={questions.length} />;
-    }
-    return <GameScreen {...{ roomCode, players, questions }} />;
-  }
-
-  if (gameState === 'reveal') {
-    return <RevealScreen {...{ roomCode, questions, players }} />;
-  }
+  return (
+    <div>
+      <header>
+        <ConnectionStatus isConnected={isConnected} />
+      </header>
+      <main>
+        {gameState === 'welcome' && <WelcomeScreen {...{ handleCreateRoom, handleJoinRoom, setPseudo, setRoomCode, isConnected }} />}
+        {gameState === 'lobby' && <LobbyScreen {...{ roomCode, players, handleStartGame, csvData, setCsvData }} />}
+        {gameState === 'game' && (amIFinished ? <WaitingScreen statuses={playerStatuses} totalQuestions={questions.length} /> : <GameScreen {...{ roomCode, players, questions }} />)}
+        {gameState === 'reveal' && <RevealScreen {...{ roomCode, questions, players }} />}
+      </main>
+    </div>
+  );
 }
 
 export default App;
